@@ -1,0 +1,29 @@
+name: Sync VNL data
+
+# Runs sync.py on a recurring schedule, and lets you trigger it manually
+# from the Actions tab. GitHub Pages can only serve static files, so the
+# actual ingestion has to run somewhere with real compute -- this keeps
+# it in the same repo as the frontend, with no separate server to manage.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # daily at 06:00 UTC -- adjust as you like (e.g. '0 6 * * 1' for weekly on Mondays)
+  workflow_dispatch: {}     # adds a "Run workflow" button in the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python sync.py
