@@ -219,12 +219,23 @@
     color: var(--gold);
   }
   .team-record .tally {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
     font-family: var(--mono);
     font-size: 16px;
     font-weight: 600;
   }
   .team-record .tally .w { color: var(--win); }
   .team-record .tally .l { color: var(--point); }
+  .team-record .tally-label {
+    font-family: var(--body);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-muted);
+    margin-right: 4px;
+  }
   .team-record .scope {
     font-family: var(--mono);
     font-size: 12px;
@@ -583,13 +594,24 @@
       if (!placings) continue;
       for (const place of [1, 2, 3]) {
         if (placings[place] === team) {
-          finishes.push({ place, season: meta.season });
+          finishes.push({ place, season: meta.season, gender: meta.gender });
           break;
         }
       }
     }
-    finishes.sort((a, b) => b.season.localeCompare(a.season) || a.place - b.place);
+    finishes.sort((a, b) => b.season.localeCompare(a.season) || a.gender.localeCompare(b.gender) || a.place - b.place);
     return finishes;
+  }
+
+  // Team names are shared between the men's and women's competitions (e.g.
+  // "USA" fields a squad in both), so with the gender filter set to "All" a
+  // podium finish alone doesn't say which one it was -- this appends
+  // whichever of gender/season isn't already pinned down by the active filters.
+  function finishDetail(f) {
+    const parts = [];
+    if (activeGender === 'all') parts.push(f.gender === 'M' ? "Men's" : "Women's");
+    if (activeSeason === 'all') parts.push(f.season);
+    return parts.length ? ` (${parts.join(' ')})` : '';
   }
 
   // Record is computed from matches that already pass the gender/season/week
@@ -603,13 +625,35 @@
       return;
     }
 
-    let wins = 0, losses = 0;
-    for (const m of matchesInScope) {
-      if (m.team_a_name !== team && m.team_b_name !== team) continue;
-      const win = winnerSide(m);
-      if (win === null) continue;
-      const side = m.team_a_name === team ? 'a' : 'b';
-      if (win === side) wins++; else losses++;
+    function tally(matches) {
+      let wins = 0, losses = 0;
+      for (const m of matches) {
+        if (m.team_a_name !== team && m.team_b_name !== team) continue;
+        const win = winnerSide(m);
+        if (win === null) continue;
+        const side = m.team_a_name === team ? 'a' : 'b';
+        if (win === side) wins++; else losses++;
+      }
+      return { wins, losses };
+    }
+
+    function tallyGroupHtml(label, { wins, losses }) {
+      return `<span class="tally-group">${label ? `<span class="tally-label">${label}</span>` : ''}<span class="w">${wins}W</span>–<span class="l">${losses}L</span></span>`;
+    }
+
+    // With the gender filter on "All", a team's men's and women's squads are
+    // distinct rosters sharing one name (see finishDetail above) -- a single
+    // combined W/L would blend two different teams' results into one number,
+    // so each gender gets its own tally instead.
+    let tallyHtml;
+    if (activeGender === 'all') {
+      const groups = ['M', 'W']
+        .map(g => ({ gender: g, t: tally(matchesInScope.filter(m => m.tournaments.gender === g)) }))
+        .filter(({ t }) => t.wins || t.losses)
+        .map(({ gender, t }) => tallyGroupHtml(gender === 'M' ? "Men's" : "Women's", t));
+      tallyHtml = groups.join('');
+    } else {
+      tallyHtml = tallyGroupHtml('', tally(matchesInScope));
     }
 
     const scopeParts = [activeSeason === 'all' ? 'All seasons' : activeSeason];
@@ -619,14 +663,14 @@
     const finishes = teamPodiumFinishes(matchesInScope, team);
     const podiumHtml = finishes.length
       ? `<span class="podium">${finishes.map(f =>
-          `${MEDAL_INFO[f.place].emoji} ${MEDAL_INFO[f.place].label}${activeSeason === 'all' ? ` (${f.season})` : ''}`
+          `${MEDAL_INFO[f.place].emoji} ${MEDAL_INFO[f.place].label}${finishDetail(f)}`
         ).join(' · ')}</span>`
       : '';
 
     el.hidden = false;
     el.innerHTML = `
       <span class="name">${team}</span>
-      <span class="tally"><span class="w">${wins}W</span>–<span class="l">${losses}L</span></span>
+      <span class="tally">${tallyHtml}</span>
       <span class="scope">${scopeParts.join(' · ')}</span>
       ${podiumHtml}`;
   }
