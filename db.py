@@ -43,9 +43,16 @@ CREATE TABLE IF NOT EXISTS matches (
     match_points_b      INTEGER,
     points_team_a_set1  INTEGER,
     points_team_b_set1  INTEGER,
+    pool_code           TEXT,                 -- VIS's phase/pool code, e.g. 'F1-2', 'F3-4', 'QF'
+    pool_name           TEXT,
     version             BIGINT NOT NULL,      -- VIS's own change-tracking version
     last_synced_at      TIMESTAMPTZ NOT NULL
 );
+
+-- Added after the initial release; ALTER instead of adding to the CREATE
+-- TABLE above so this still applies to databases that already ran it.
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS pool_code TEXT;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS pool_name TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_matches_tournament ON matches(tournament_no);
 """

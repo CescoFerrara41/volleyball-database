@@ -15,7 +15,8 @@ from vis_client import get_tournament_list, get_match_list
 
 MATCH_FIELDS = (
     "No NoInTournament DateLocal TeamAName TeamBName "
-    "MatchPointsA MatchPointsB PointsTeamASet1 PointsTeamBSet1"
+    "MatchPointsA MatchPointsB PointsTeamASet1 PointsTeamBSet1 "
+    "PoolCode PoolName"
 )
 
 # Real VNL codes are 'MVNL<year>' / 'WVNL<year>', with an optional 'F'
@@ -55,13 +56,18 @@ def load_matches(conn, tournament_no: int) -> int:
 
     with conn.cursor() as cur:
         for m in matches:
+            # `OR matches.pool_code IS NULL` (in addition to the version check)
+            # lets a re-run backfill pool_code/pool_name onto rows inserted
+            # before those columns existed, even though VIS's version number
+            # for an old, unchanged match never bumps on its own.
             cur.execute(
                 """
                 INSERT INTO matches (
                     no, tournament_no, no_in_tournament, date_local,
                     team_a_name, team_b_name, match_points_a, match_points_b,
-                    points_team_a_set1, points_team_b_set1, version, last_synced_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    points_team_a_set1, points_team_b_set1, pool_code, pool_name,
+                    version, last_synced_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (no) DO UPDATE SET
                     no_in_tournament=EXCLUDED.no_in_tournament,
                     date_local=EXCLUDED.date_local,
@@ -71,9 +77,11 @@ def load_matches(conn, tournament_no: int) -> int:
                     match_points_b=EXCLUDED.match_points_b,
                     points_team_a_set1=EXCLUDED.points_team_a_set1,
                     points_team_b_set1=EXCLUDED.points_team_b_set1,
+                    pool_code=EXCLUDED.pool_code,
+                    pool_name=EXCLUDED.pool_name,
                     version=EXCLUDED.version,
                     last_synced_at=EXCLUDED.last_synced_at
-                WHERE EXCLUDED.version != matches.version
+                WHERE EXCLUDED.version != matches.version OR matches.pool_code IS NULL
                 """,
                 (
                     int(m["No"]),
@@ -86,6 +94,8 @@ def load_matches(conn, tournament_no: int) -> int:
                     int(m["MatchPointsB"]) if m.get("MatchPointsB") else None,
                     int(m["PointsTeamASet1"]) if m.get("PointsTeamASet1") else None,
                     int(m["PointsTeamBSet1"]) if m.get("PointsTeamBSet1") else None,
+                    m.get("PoolCode") or None,
+                    m.get("PoolName") or None,
                     int(m["Version"]),
                     now,
                 ),

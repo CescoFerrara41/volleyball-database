@@ -230,6 +230,11 @@
     font-size: 12px;
     color: var(--ink-muted);
   }
+  .team-record .podium {
+    font-family: var(--body);
+    font-weight: 600;
+    font-size: 13px;
+  }
 
   /* ---------- Content ---------- */
   main { max-width: 980px; margin: 0 auto; padding: 40px 24px 100px; }
@@ -422,6 +427,7 @@
   let activeSeason = 'all';
   let activeWeek = 'all';
   let activeTeam = 'all';
+  let podiumsByTournament = new Map();
 
   async function fetchAllMatches() {
     const pageSize = 1000;
@@ -541,6 +547,51 @@
     }
   }
 
+  // VIS labels the medal matches with a pool_code of 'F1-2' (gold vs.
+  // silver) and 'F3-4' (bronze vs. 4th) in every season that's actually
+  // been played, back through 2018 -- verified live against the VIS API.
+  const MEDAL_INFO = {
+    1: { emoji: '🥇', label: 'Champion' },
+    2: { emoji: '🥈', label: 'Runner-up' },
+    3: { emoji: '🥉', label: '3rd place' },
+  };
+
+  function computePodiums(matches) {
+    const podiums = new Map(); // tournament_no -> { 1: team, 2: team, 3: team, 4: team }
+    for (const m of matches) {
+      if (m.pool_code !== 'F1-2' && m.pool_code !== 'F3-4') continue;
+      const win = winnerSide(m);
+      if (win === null) continue;
+      const winner = win === 'a' ? m.team_a_name : m.team_b_name;
+      const loser = win === 'a' ? m.team_b_name : m.team_a_name;
+      if (!podiums.has(m.tournament_no)) podiums.set(m.tournament_no, {});
+      const placings = podiums.get(m.tournament_no);
+      if (m.pool_code === 'F1-2') { placings[1] = winner; placings[2] = loser; }
+      else { placings[3] = winner; placings[4] = loser; }
+    }
+    return podiums;
+  }
+
+  function teamPodiumFinishes(matchesInScope, team) {
+    const tournamentsSeen = new Map();
+    for (const m of matchesInScope) {
+      if (!tournamentsSeen.has(m.tournament_no)) tournamentsSeen.set(m.tournament_no, m.tournaments);
+    }
+    const finishes = [];
+    for (const [tNo, meta] of tournamentsSeen) {
+      const placings = podiumsByTournament.get(tNo);
+      if (!placings) continue;
+      for (const place of [1, 2, 3]) {
+        if (placings[place] === team) {
+          finishes.push({ place, season: meta.season });
+          break;
+        }
+      }
+    }
+    finishes.sort((a, b) => b.season.localeCompare(a.season) || a.place - b.place);
+    return finishes;
+  }
+
   // Record is computed from matches that already pass the gender/season/week
   // filters (but not the team filter itself), so "record for that season"
   // tracks whatever season/week is currently selected -- "All seasons"
@@ -565,11 +616,19 @@
     if (activeWeek !== 'all') scopeParts.push(activeWeek);
     if (activeGender !== 'all') scopeParts.push(activeGender === 'M' ? "Men's" : "Women's");
 
+    const finishes = teamPodiumFinishes(matchesInScope, team);
+    const podiumHtml = finishes.length
+      ? `<span class="podium">${finishes.map(f =>
+          `${MEDAL_INFO[f.place].emoji} ${MEDAL_INFO[f.place].label}${activeSeason === 'all' ? ` (${f.season})` : ''}`
+        ).join(' · ')}</span>`
+      : '';
+
     el.hidden = false;
     el.innerHTML = `
       <span class="name">${team}</span>
       <span class="tally"><span class="w">${wins}W</span>–<span class="l">${losses}L</span></span>
-      <span class="scope">${scopeParts.join(' · ')}</span>`;
+      <span class="scope">${scopeParts.join(' · ')}</span>
+      ${podiumHtml}`;
   }
 
   function renderStats(matches) {
@@ -708,6 +767,7 @@
     try {
       allMatches = await fetchAllMatches();
       assignWeeks(allMatches);
+      podiumsByTournament = computePodiums(allMatches);
       populateSeasonFilter(allMatches);
       populateWeekFilter(allMatches);
       populateTeamFilter(allMatches);
