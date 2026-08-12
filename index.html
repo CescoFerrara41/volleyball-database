@@ -184,7 +184,8 @@
     color: var(--bg);
   }
   select#season-select,
-  select#week-select {
+  select#week-select,
+  select#team-select {
     font-family: var(--body);
     font-size: 13px;
     font-weight: 600;
@@ -195,6 +196,36 @@
   }
   .result-count {
     margin-left: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+
+  /* ---------- Team record banner ---------- */
+  .team-record {
+    max-width: 980px;
+    margin: 28px auto 0;
+    padding: 0 24px;
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .team-record[hidden] { display: none; }
+  .team-record .name {
+    font-family: var(--display);
+    font-size: 28px;
+    letter-spacing: 0.01em;
+    color: var(--gold);
+  }
+  .team-record .tally {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .team-record .tally .w { color: var(--win); }
+  .team-record .tally .l { color: var(--point); }
+  .team-record .scope {
     font-family: var(--mono);
     font-size: 12px;
     color: var(--ink-muted);
@@ -350,8 +381,16 @@
       <option value="all">All weeks</option>
     </select>
   </div>
+  <div class="filter-group">
+    <span class="filter-label">Team</span>
+    <select id="team-select">
+      <option value="all">All teams</option>
+    </select>
+  </div>
   <span class="result-count" id="result-count"></span>
 </nav>
+
+<div class="team-record" id="team-record" hidden></div>
 
 <main id="main-content">
   <div class="empty-state" id="loading-state">Loading match history…</div>
@@ -382,6 +421,7 @@
   let activeGender = 'all';
   let activeSeason = 'all';
   let activeWeek = 'all';
+  let activeTeam = 'all';
 
   async function fetchAllMatches() {
     const pageSize = 1000;
@@ -490,6 +530,48 @@
     }
   }
 
+  function populateTeamFilter(matches) {
+    const teams = [...new Set(matches.flatMap(m => [m.team_a_name, m.team_b_name]).filter(Boolean))].sort();
+    const select = document.getElementById('team-select');
+    for (const t of teams) {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      select.appendChild(opt);
+    }
+  }
+
+  // Record is computed from matches that already pass the gender/season/week
+  // filters (but not the team filter itself), so "record for that season"
+  // tracks whatever season/week is currently selected -- "All seasons"
+  // included, in which case it's the team's all-time record.
+  function renderTeamRecord(matchesInScope, team) {
+    const el = document.getElementById('team-record');
+    if (team === 'all') {
+      el.hidden = true;
+      return;
+    }
+
+    let wins = 0, losses = 0;
+    for (const m of matchesInScope) {
+      if (m.team_a_name !== team && m.team_b_name !== team) continue;
+      const win = winnerSide(m);
+      if (win === null) continue;
+      const side = m.team_a_name === team ? 'a' : 'b';
+      if (win === side) wins++; else losses++;
+    }
+
+    const scopeParts = [activeSeason === 'all' ? 'All seasons' : activeSeason];
+    if (activeWeek !== 'all') scopeParts.push(activeWeek);
+    if (activeGender !== 'all') scopeParts.push(activeGender === 'M' ? "Men's" : "Women's");
+
+    el.hidden = false;
+    el.innerHTML = `
+      <span class="name">${team}</span>
+      <span class="tally"><span class="w">${wins}W</span>–<span class="l">${losses}L</span></span>
+      <span class="scope">${scopeParts.join(' · ')}</span>`;
+  }
+
   function renderStats(matches) {
     const tournamentNos = new Set(matches.map(m => m.tournament_no));
     const seasons = new Set(matches.map(m => m.tournaments.season));
@@ -544,12 +626,18 @@
   }
 
   function render() {
-    const filtered = allMatches.filter(m => {
+    const inScope = allMatches.filter(m => {
       const genderOk = activeGender === 'all' || m.tournaments.gender === activeGender;
       const seasonOk = activeSeason === 'all' || m.tournaments.season === activeSeason;
       const weekOk = activeWeek === 'all' || m.week === activeWeek;
       return genderOk && seasonOk && weekOk;
     });
+
+    renderTeamRecord(inScope, activeTeam);
+
+    const filtered = activeTeam === 'all'
+      ? inScope
+      : inScope.filter(m => m.team_a_name === activeTeam || m.team_b_name === activeTeam);
 
     document.getElementById('result-count').textContent =
       `${filtered.length.toLocaleString()} match${filtered.length === 1 ? '' : 'es'}`;
@@ -557,7 +645,7 @@
     const main = document.getElementById('main-content');
 
     if (filtered.length === 0) {
-      main.innerHTML = `<div class="empty-state">No matches for this filter yet. Try a different season, gender, or week.</div>`;
+      main.innerHTML = `<div class="empty-state">No matches for this filter yet. Try a different season, gender, week, or team.</div>`;
       return;
     }
 
@@ -611,12 +699,18 @@
     render();
   });
 
+  document.getElementById('team-select').addEventListener('change', (e) => {
+    activeTeam = e.target.value;
+    render();
+  });
+
   (async function init() {
     try {
       allMatches = await fetchAllMatches();
       assignWeeks(allMatches);
       populateSeasonFilter(allMatches);
       populateWeekFilter(allMatches);
+      populateTeamFilter(allMatches);
       renderStats(allMatches);
       render();
     } catch (err) {
