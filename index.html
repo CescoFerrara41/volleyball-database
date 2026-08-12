@@ -183,7 +183,8 @@
     background: var(--gold);
     color: var(--bg);
   }
-  select#season-select {
+  select#season-select,
+  select#week-select {
     font-family: var(--body);
     font-size: 13px;
     font-weight: 600;
@@ -343,6 +344,12 @@
       <option value="all">All seasons</option>
     </select>
   </div>
+  <div class="filter-group">
+    <span class="filter-label">Week</span>
+    <select id="week-select">
+      <option value="all">All weeks</option>
+    </select>
+  </div>
   <span class="result-count" id="result-count"></span>
 </nav>
 
@@ -374,6 +381,7 @@
   let allMatches = [];
   let activeGender = 'all';
   let activeSeason = 'all';
+  let activeWeek = 'all';
 
   async function fetchAllMatches() {
     const pageSize = 1000;
@@ -416,6 +424,68 @@
       const opt = document.createElement('option');
       opt.value = s;
       opt.textContent = s;
+      select.appendChild(opt);
+    }
+  }
+
+  // VNL's week count and pool structure varies by year (recent seasons run 3
+  // preliminary weeks + a final phase; 2018/2019 ran 5), so weeks are derived
+  // from date gaps rather than a hardcoded count: matches within WEEK_GAP_DAYS
+  // of each other (within the same tournament) belong to the same week, and a
+  // tournament's last cluster -- the knockout rounds -- is labeled "Final Phase".
+  const WEEK_GAP_DAYS = 2;
+
+  function assignWeeks(matches) {
+    const datesByTournament = new Map();
+    for (const m of matches) {
+      if (!m.date_local) continue;
+      if (!datesByTournament.has(m.tournament_no)) datesByTournament.set(m.tournament_no, new Set());
+      datesByTournament.get(m.tournament_no).add(m.date_local);
+    }
+
+    const labelByDatePerTournament = new Map();
+    for (const [tNo, dateSet] of datesByTournament) {
+      const dates = [...dateSet].sort();
+      const clusters = [];
+      let current = [];
+      for (const d of dates) {
+        const prev = current[current.length - 1];
+        if (prev && (new Date(d) - new Date(prev)) / 86400000 > WEEK_GAP_DAYS) {
+          clusters.push(current);
+          current = [];
+        }
+        current.push(d);
+      }
+      if (current.length) clusters.push(current);
+
+      const labelByDate = new Map();
+      clusters.forEach((cluster, i) => {
+        const label = (i === clusters.length - 1 && clusters.length > 1) ? 'Final Phase' : `Week ${i + 1}`;
+        for (const d of cluster) labelByDate.set(d, label);
+      });
+      labelByDatePerTournament.set(tNo, labelByDate);
+    }
+
+    for (const m of matches) {
+      const labelByDate = labelByDatePerTournament.get(m.tournament_no);
+      m.week = (m.date_local && labelByDate) ? labelByDate.get(m.date_local) : undefined;
+    }
+  }
+
+  function weekSortKey(label) {
+    if (label === 'Final Phase') return 9999;
+    const n = parseInt(label.slice('Week '.length), 10);
+    return Number.isNaN(n) ? 9998 : n;
+  }
+
+  function populateWeekFilter(matches) {
+    const weeks = [...new Set(matches.map(m => m.week).filter(Boolean))]
+      .sort((a, b) => weekSortKey(a) - weekSortKey(b));
+    const select = document.getElementById('week-select');
+    for (const w of weeks) {
+      const opt = document.createElement('option');
+      opt.value = w;
+      opt.textContent = w;
       select.appendChild(opt);
     }
   }
@@ -477,7 +547,8 @@
     const filtered = allMatches.filter(m => {
       const genderOk = activeGender === 'all' || m.tournaments.gender === activeGender;
       const seasonOk = activeSeason === 'all' || m.tournaments.season === activeSeason;
-      return genderOk && seasonOk;
+      const weekOk = activeWeek === 'all' || m.week === activeWeek;
+      return genderOk && seasonOk && weekOk;
     });
 
     document.getElementById('result-count').textContent =
@@ -486,7 +557,7 @@
     const main = document.getElementById('main-content');
 
     if (filtered.length === 0) {
-      main.innerHTML = `<div class="empty-state">No matches for this filter yet. Try a different season or gender.</div>`;
+      main.innerHTML = `<div class="empty-state">No matches for this filter yet. Try a different season, gender, or week.</div>`;
       return;
     }
 
@@ -535,10 +606,17 @@
     render();
   });
 
+  document.getElementById('week-select').addEventListener('change', (e) => {
+    activeWeek = e.target.value;
+    render();
+  });
+
   (async function init() {
     try {
       allMatches = await fetchAllMatches();
+      assignWeeks(allMatches);
       populateSeasonFilter(allMatches);
+      populateWeekFilter(allMatches);
       renderStats(allMatches);
       render();
     } catch (err) {

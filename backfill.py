@@ -7,6 +7,7 @@ Run this once to seed the database:
     python backfill.py
 """
 
+import re
 from datetime import datetime, timezone
 
 from db import get_connection
@@ -17,17 +18,20 @@ MATCH_FIELDS = (
     "MatchPointsA MatchPointsB PointsTeamASet1 PointsTeamBSet1"
 )
 
+# Real VNL codes are 'MVNL<year>' / 'WVNL<year>', with an optional 'F'
+# suffix for seasons where Finals was a separate VIS tournament (e.g.
+# 'MVNL24F'). FIVB also publishes test/placeholder tournaments under
+# 'VNL' every season (e.g. 'MVNLTEST', 'MVNL25XX', a bare 'VNL') whose
+# data is frequently incomplete -- this pattern excludes all of those
+# without needing a maintained blocklist, verified against every VNL
+# tournament in VIS's history as of 2026-08-12.
+VNL_CODE_RE = re.compile(r"^[MW]VNL\d{2,4}F?$")
+
 
 def discover_vnl_tournaments() -> list[dict]:
-    """
-    Pull the full tournament list and keep only VNL entries.
-
-    VNL codes follow a 'MVNL<year>' / 'WVNL<year>' pattern for the main
-    season, with a 'F' suffix for Finals (e.g. 'MVNL24F'). We keep both —
-    Finals matches are real VNL matches, just a separate VIS tournament.
-    """
+    """Pull the full tournament list and keep only real (non-test) VNL entries."""
     all_tournaments = get_tournament_list(fields="No Code Name Season")
-    return [t for t in all_tournaments if "VNL" in t["Code"]]
+    return [t for t in all_tournaments if VNL_CODE_RE.match(t["Code"])]
 
 
 def load_tournament(conn, tournament: dict) -> None:
