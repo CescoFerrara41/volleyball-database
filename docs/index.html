@@ -109,6 +109,75 @@
     margin: 0 0 40px;
   }
 
+  /* ---------- Search ---------- */
+  .search-wrap {
+    position: relative;
+    max-width: 480px;
+    margin: 0 0 32px;
+  }
+  .search-input {
+    width: 100%;
+    font-family: var(--body);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 12px 16px;
+  }
+  .search-input:focus {
+    outline: none;
+    border-color: var(--gold);
+  }
+  .search-results {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    max-height: 360px;
+    overflow-y: auto;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+  }
+  .search-results[hidden] { display: none; }
+  .search-result-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--line);
+  }
+  .search-result-item:last-child { border-bottom: none; }
+  .search-result-item:hover,
+  .search-result-item.active {
+    background: var(--line);
+  }
+  .search-result-item .sr-type {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+    flex-shrink: 0;
+    width: 42px;
+  }
+  .search-result-item .sr-label {
+    font-weight: 600;
+    flex: 1;
+  }
+  .search-result-item .sr-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-muted);
+  }
+  .search-empty {
+    padding: 14px 16px;
+    color: var(--ink-muted);
+    font-size: 13px;
+  }
+
   .scoreboard-stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -280,9 +349,11 @@
     padding: 16px 18px;
     opacity: 0;
     transform: translateY(8px);
-    transition: opacity 0.4s ease, transform 0.4s ease;
+    transition: opacity 0.4s ease, transform 0.4s ease, border-color 0.15s ease;
+    cursor: pointer;
   }
   .match-card.in-view { opacity: 1; transform: translateY(0); }
+  .match-card:hover { border-color: var(--gold); }
 
   .match-row {
     display: grid;
@@ -337,6 +408,156 @@
     white-space: pre-wrap;
   }
 
+  /* ---------- Modal (player profile / match detail) ---------- */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(6, 12, 20, 0.72);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 48px 20px;
+    overflow-y: auto;
+  }
+  .modal-backdrop[hidden] { display: none; }
+  .modal {
+    position: relative;
+    width: 100%;
+    max-width: 760px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    padding: 32px 28px 40px;
+  }
+  .modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .modal-close:hover { color: var(--ink); border-color: var(--gold); }
+
+  /* ---------- Player profile ---------- */
+  .player-header { margin-bottom: 24px; }
+  .player-header h2 {
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: 40px;
+    letter-spacing: 0.01em;
+    margin: 0 0 6px;
+  }
+  .player-header .meta {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .profile-section { margin-bottom: 32px; }
+  .profile-section h3 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 12px;
+  }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .data-table th, .data-table td {
+    text-align: right;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .data-table th:first-child, .data-table td:first-child,
+  .data-table th.left, .data-table td.left {
+    text-align: left;
+  }
+  .data-table thead th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tbody tr.clickable { cursor: pointer; }
+  .data-table tbody tr.clickable:hover { background: var(--panel); }
+  .data-table td.num, .data-table th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .table-scroll { overflow-x: auto; }
+
+  /* ---------- Match detail ---------- */
+  .match-detail-header { margin-bottom: 8px; }
+  .match-detail-header .mdh-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 10px;
+  }
+  .match-detail-header .team { font-family: var(--display); font-size: 30px; letter-spacing: 0.01em; }
+  .match-detail-header .team.a { text-align: right; }
+  .match-detail-header .team.winner { color: var(--win); }
+  .match-detail-header .score {
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--gold);
+    white-space: nowrap;
+  }
+  .match-detail-header .mdh-meta {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-muted);
+    text-align: center;
+  }
+
+  .boxscore-category { margin-top: 28px; }
+  .boxscore-category h3 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 10px;
+  }
+  .boxscore-teams {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .boxscore-team .team-label {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 6px;
+    color: var(--ink-muted);
+  }
+
+  .loading-inline {
+    padding: 40px 0;
+    text-align: center;
+    color: var(--ink-muted);
+    font-size: 13px;
+  }
+
+  @media (max-width: 720px) {
+    .boxscore-teams { grid-template-columns: 1fr; }
+  }
+
   footer {
     border-top: 1px solid var(--line);
     padding: 24px;
@@ -357,6 +578,9 @@
     .team.a, .team.b { text-align: center; }
     .team.a.winner::before, .team.winner::after { content: none; }
     .team.winner { text-decoration: underline; text-decoration-color: var(--win); }
+    .match-detail-header .mdh-row { grid-template-columns: 1fr; text-align: center; gap: 4px; }
+    .match-detail-header .team.a { text-align: center; }
+    .modal { padding: 26px 16px 32px; }
   }
 </style>
 </head>
@@ -367,6 +591,11 @@
     <p class="eyebrow">FIVB · Historical Archive</p>
     <h1>Volleyball Nations League</h1>
     <p class="sub">Every tracked VNL match, men's and women's, pulled from the FIVB VIS web service and kept in sync automatically.</p>
+
+    <div class="search-wrap">
+      <input type="text" id="search-input" class="search-input" placeholder="Search players or teams…" autocomplete="off">
+      <div class="search-results" id="search-results" hidden></div>
+    </div>
 
     <div class="scoreboard-stats" id="hero-stats">
       <div class="stat"><div class="num" id="stat-matches">—</div><div class="label">Matches</div></div>
@@ -416,6 +645,13 @@
   Data via the public <a href="https://www.fivb.org/VisSDK/VisWebService/" target="_blank" rel="noopener">FIVB VIS web service</a>, synced on a recurring schedule · Not affiliated with FIVB
 </footer>
 
+<div class="modal-backdrop" id="modal-backdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true">
+    <button class="modal-close" id="modal-close" aria-label="Close">✕</button>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
 <script>
   // -------------------------------------------------------------
   // Fill these in with your own Supabase project's public values,
@@ -434,28 +670,62 @@
   const client = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
   let allMatches = [];
+  let allPlayers = [];
+  let matchByNo = new Map();
+  let searchIndex = [];
   let activeGender = 'all';
   let activeSeason = 'all';
   let activeWeek = 'all';
   let activeTeam = 'all';
   let podiumsByTournament = new Map();
 
-  async function fetchAllMatches() {
+  // Shared paging loop -- Supabase/PostgREST caps a single response at
+  // 1000 rows, so anything that could plausibly exceed that (matches,
+  // player stats for a whole match or a long career) needs to keep
+  // requesting pages until a short page signals the end.
+  async function fetchPaginated(buildQuery) {
     const pageSize = 1000;
     let from = 0;
     let rows = [];
     while (true) {
-      const { data, error } = await client
-        .from('matches')
-        .select('*, tournaments!inner(code,name,season,gender)')
-        .order('date_local', { ascending: false })
-        .range(from, from + pageSize - 1);
+      const { data, error } = await buildQuery(from, from + pageSize - 1);
       if (error) throw error;
       rows = rows.concat(data);
       if (data.length < pageSize) break;
       from += pageSize;
     }
     return rows;
+  }
+
+  function fetchAllMatches() {
+    return fetchPaginated((from, to) => client
+      .from('matches')
+      .select('*, tournaments!inner(code,name,season,gender)')
+      .order('date_local', { ascending: false })
+      .range(from, to));
+  }
+
+  function fetchAllPlayers() {
+    return fetchPaginated((from, to) => client
+      .from('players')
+      .select('*')
+      .range(from, to));
+  }
+
+  function fetchPlayerMatchStats(playerVwId) {
+    return fetchPaginated((from, to) => client
+      .from('player_match_stats')
+      .select('*')
+      .eq('player_vw_id', playerVwId)
+      .range(from, to));
+  }
+
+  function fetchMatchStats(matchNo) {
+    return fetchPaginated((from, to) => client
+      .from('player_match_stats')
+      .select('*')
+      .eq('match_no', matchNo)
+      .range(from, to));
   }
 
   function animateCount(el, target) {
@@ -683,6 +953,276 @@
     animateCount(document.getElementById('stat-seasons'), seasons.size);
   }
 
+  // raw_values keys are the scraped table's own concatenated header text
+  // (see volleystation_scraper.py's header-driven column mapping) -- e.g.
+  // "Attack PointsA Pts" is the title "Attack Points" run together with
+  // its short column label "A Pts". Mapped here to compact display labels
+  // per category, since which columns exist genuinely varies by category.
+  const STAT_CATEGORY_ORDER = ['scoring', 'attack', 'block', 'serve', 'reception', 'dig', 'set'];
+  const STAT_CATEGORY_LABELS = {
+    scoring: 'Scoring', attack: 'Attack', block: 'Block', serve: 'Serve',
+    reception: 'Reception', dig: 'Dig', set: 'Set (Assists)',
+  };
+  const CATEGORY_FIELDS = {
+    scoring: [['Total ABSABS', 'Pts'], ['Attack PointsA Pts', 'Atk'], ['Block PointsB Pts', 'Blk'], ['Serve PointsS Pts', 'Srv'], ['ErrorsErr', 'Err'], ['Efficiency %Eff', 'Eff%']],
+    attack: [['PointPt', 'Pts'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
+    block: [['PointPt', 'Pts'], ['ErrorsErr', 'Err'], ['TouchesTouches', 'Touch'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
+    serve: [['PointPt', 'Aces'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
+    reception: [['SuccessfulSuccessful', 'Succ'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
+    dig: [['DigsDig', 'Digs'], ['ErrorsErr', 'Err'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
+    set: [['PointPt', 'Assists'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
+  };
+
+  function num(v) {
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+  }
+  function fmtNum(v) {
+    const n = num(v);
+    return n === null ? '–' : n;
+  }
+
+  // ---------- Modal (player profile / match detail) ----------
+  const modalBackdrop = document.getElementById('modal-backdrop');
+  const modalBody = document.getElementById('modal-body');
+
+  function openModal(html) {
+    modalBody.innerHTML = html;
+    modalBackdrop.hidden = false;
+  }
+  function closeModal() {
+    modalBackdrop.hidden = true;
+    modalBody.innerHTML = '';
+  }
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeModal(); });
+
+  // Match detail and player profile views link to each other (a match's
+  // box score rows open that player's profile; a player's match list
+  // opens that match's box score) via a "← Back" link. `back` is
+  // { html, wire }, capturing the replaced view's HTML and a closure to
+  // re-attach its click handlers -- innerHTML replacement drops listeners,
+  // and each hop's `wire` closure carries its OWN back context forward,
+  // so going back repeatedly walks the whole chain, not just one level.
+  function wireModalInteractions(back) {
+    const link = modalBody.querySelector('.modal-back');
+    if (link && back) {
+      link.hidden = false;
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        openModal(back.html);
+        if (back.wire) back.wire();
+      });
+    }
+
+    modalBody.querySelectorAll('[data-match-no]').forEach(el => {
+      el.addEventListener('click', () => {
+        const matchNo = Number(el.dataset.matchNo);
+        openMatchDetail(matchNo, { html: modalBody.innerHTML, wire: () => wireModalInteractions(back) });
+      });
+    });
+    modalBody.querySelectorAll('[data-player-vw-id]').forEach(el => {
+      el.addEventListener('click', () => {
+        const playerVwId = Number(el.dataset.playerVwId);
+        openPlayerProfile(playerVwId, { html: modalBody.innerHTML, wire: () => wireModalInteractions(back) });
+      });
+    });
+  }
+
+  async function openMatchDetail(matchNo, back) {
+    openModal(`<div class="loading-inline">Loading match…</div>`);
+    try {
+      const rows = await fetchMatchStats(matchNo);
+      openModal(renderMatchDetail(matchNo, rows));
+      wireModalInteractions(back);
+    } catch (err) {
+      openModal(`<div class="error-state">Couldn't load match data.<code>${(err && err.message) || err}</code></div>`);
+    }
+  }
+
+  function renderMatchDetail(matchNo, rows) {
+    const match = matchByNo.get(matchNo);
+    if (!match) return `<div class="error-state">Match not found.</div>`;
+
+    const win = winnerSide(match);
+    const score = (match.match_points_a != null && match.match_points_b != null)
+      ? `${match.match_points_a}–${match.match_points_b}` : '—';
+
+    const backLink = `<a class="modal-back" href="#" hidden style="display:block;margin-bottom:16px;color:var(--gold);font-family:var(--mono);font-size:12px;text-decoration:none;">← Back</a>`;
+
+    const header = `
+      <div class="match-detail-header">
+        <div class="mdh-row">
+          <div class="team a ${win === 'a' ? 'winner' : ''}">${match.team_a_name ?? 'TBD'}</div>
+          <div class="score">${score}</div>
+          <div class="team b ${win === 'b' ? 'winner' : ''}">${match.team_b_name ?? 'TBD'}</div>
+        </div>
+        <div class="mdh-meta">${match.tournaments.name} · ${match.pool_name || match.tournaments.code} · ${match.date_local ?? ''}</div>
+      </div>`;
+
+    if (rows.length === 0) {
+      return backLink + header + `<div class="loading-inline">No player stats recorded for this match yet.</div>`;
+    }
+
+    const byCategory = new Map();
+    for (const r of rows) {
+      if (!byCategory.has(r.stat_category)) byCategory.set(r.stat_category, { A: [], B: [] });
+      const side = byCategory.get(r.stat_category)[r.team_side];
+      if (side) side.push(r);
+    }
+
+    function teamTable(sideRows, teamName, cat) {
+      const fields = CATEGORY_FIELDS[cat];
+      const sortKey = fields[0][0];
+      const sorted = [...sideRows].sort((a, b) => (num(b.raw_values[sortKey]) ?? -Infinity) - (num(a.raw_values[sortKey]) ?? -Infinity));
+      const bodyHtml = sorted.map(r => `
+        <tr class="clickable" data-player-vw-id="${r.player_vw_id}">
+          <td class="left">${r.raw_values['Player NamePlayer'] || r.player_name}</td>
+          <td class="left" style="color:var(--ink-muted)">${r.raw_values['PositionPos.'] || ''}</td>
+          ${fields.map(([key]) => `<td class="num">${fmtNum(r.raw_values[key])}</td>`).join('')}
+        </tr>`).join('');
+      const fieldHeaders = fields.map(([, label]) => `<th class="num">${label}</th>`).join('');
+      return `
+        <div class="boxscore-team">
+          <div class="team-label">${teamName}</div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead><tr><th class="left">Player</th><th class="left">Pos</th>${fieldHeaders}</tr></thead>
+              <tbody>${bodyHtml}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    const categoriesHtml = STAT_CATEGORY_ORDER
+      .filter(cat => byCategory.has(cat))
+      .map(cat => {
+        const sides = byCategory.get(cat);
+        return `
+          <div class="boxscore-category">
+            <h3>${STAT_CATEGORY_LABELS[cat]}</h3>
+            <div class="boxscore-teams">
+              ${teamTable(sides.A, match.team_a_name ?? 'Team A', cat)}
+              ${teamTable(sides.B, match.team_b_name ?? 'Team B', cat)}
+            </div>
+          </div>`;
+      }).join('');
+
+    return backLink + header + categoriesHtml;
+  }
+
+  async function openPlayerProfile(playerVwId, back) {
+    openModal(`<div class="loading-inline">Loading player…</div>`);
+    try {
+      const rows = await fetchPlayerMatchStats(playerVwId);
+      if (rows.length === 0) {
+        openModal(`<div class="loading-inline">No stats found for this player.</div>`);
+        return;
+      }
+      openModal(renderPlayerProfile(rows));
+      wireModalInteractions(back);
+    } catch (err) {
+      openModal(`<div class="error-state">Couldn't load player data.<code>${(err && err.message) || err}</code></div>`);
+    }
+  }
+
+  function renderPlayerProfile(rows) {
+    const byMatch = new Map();
+    for (const r of rows) {
+      if (!byMatch.has(r.match_no)) byMatch.set(r.match_no, {});
+      byMatch.get(r.match_no)[r.stat_category] = r;
+    }
+
+    const name = rows[0].player_name;
+    const appearances = [...byMatch.entries()]
+      .map(([matchNo, cats]) => ({ matchNo, match: matchByNo.get(matchNo), cats }))
+      .filter(x => x.match) // guards against a stat row for a match that isn't loaded (shouldn't happen, but not worth a hard failure if it does)
+      .sort((a, b) => (b.match.date_local || '').localeCompare(a.match.date_local || ''));
+
+    const anyCat = (cats) => cats.scoring || Object.values(cats)[0];
+    const position = anyCat(appearances[0]?.cats || {})?.raw_values['PositionPos.'] ?? '';
+
+    const bySeason = new Map();
+    for (const { match, cats } of appearances) {
+      const s = cats.scoring;
+      const season = match.tournaments.season;
+      const gender = match.tournaments.gender;
+      const key = `${season}|${gender}`;
+      if (!bySeason.has(key)) bySeason.set(key, { season, gender, matches: 0, pts: 0, atk: 0, blk: 0, srv: 0, err: 0 });
+      const agg = bySeason.get(key);
+      agg.matches += 1;
+      if (s) {
+        agg.pts += num(s.raw_values['Total ABSABS']) ?? 0;
+        agg.atk += num(s.raw_values['Attack PointsA Pts']) ?? 0;
+        agg.blk += num(s.raw_values['Block PointsB Pts']) ?? 0;
+        agg.srv += num(s.raw_values['Serve PointsS Pts']) ?? 0;
+        agg.err += num(s.raw_values['ErrorsErr']) ?? 0;
+      }
+    }
+    const seasons = [...bySeason.values()].sort((a, b) => b.season.localeCompare(a.season) || a.gender.localeCompare(b.gender));
+
+    const seasonRowsHtml = seasons.map(s => `
+      <tr>
+        <td class="left">${s.season} <span style="color:var(--ink-muted)">· ${s.gender === 'M' ? "Men's" : "Women's"}</span></td>
+        <td class="num">${s.matches}</td>
+        <td class="num">${s.pts}</td>
+        <td class="num">${s.atk}</td>
+        <td class="num">${s.blk}</td>
+        <td class="num">${s.srv}</td>
+        <td class="num">${s.err}</td>
+      </tr>`).join('');
+
+    const matchRowsHtml = appearances.map(({ matchNo, match, cats }) => {
+      const s = anyCat(cats);
+      const side = s ? s.team_side : null;
+      const team = side === 'A' ? match.team_a_name : match.team_b_name;
+      const opponent = side === 'A' ? match.team_b_name : match.team_a_name;
+      const win = winnerSide(match);
+      const result = (win === null || side === null) ? '–' : (win === side.toLowerCase() ? 'W' : 'L');
+      const pts = cats.scoring ? fmtNum(cats.scoring.raw_values['Total ABSABS']) : '–';
+      return `
+        <tr class="clickable" data-match-no="${matchNo}">
+          <td class="left">${match.date_local ?? ''}</td>
+          <td class="left">${team ?? '?'} <span style="color:var(--ink-muted)">vs</span> ${opponent ?? '?'}</td>
+          <td class="num">${result}</td>
+          <td class="num">${pts}</td>
+        </tr>`;
+    }).join('');
+
+    const backLink = `<a class="modal-back" href="#" hidden style="display:block;margin-bottom:16px;color:var(--gold);font-family:var(--mono);font-size:12px;text-decoration:none;">← Back</a>`;
+
+    return `
+      ${backLink}
+      <div class="player-header">
+        <h2>${name}</h2>
+        <div class="meta">${position ? position + ' · ' : ''}${appearances.length} match${appearances.length === 1 ? '' : 'es'} tracked</div>
+      </div>
+
+      <div class="profile-section">
+        <h3>By Season</h3>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr>
+              <th class="left">Season</th><th class="num">MP</th><th class="num">Pts</th>
+              <th class="num">Atk</th><th class="num">Blk</th><th class="num">Srv</th><th class="num">Err</th>
+            </tr></thead>
+            <tbody>${seasonRowsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="profile-section">
+        <h3>Matches</h3>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th class="left">Date</th><th class="left">Match</th><th class="num">Result</th><th class="num">Pts</th></tr></thead>
+            <tbody>${matchRowsHtml}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
   function winnerSide(m) {
     if (m.match_points_a == null || m.match_points_b == null) return null;
     if (m.match_points_a > m.match_points_b) return 'a';
@@ -699,7 +1239,7 @@
       ? `Set 1: ${m.points_team_a_set1}–${m.points_team_b_set1}`
       : '';
     return `
-      <article class="match-card">
+      <article class="match-card" data-match-no="${m.no}">
         <div class="match-row">
           <div class="team a ${win === 'a' ? 'winner' : ''}">${m.team_a_name ?? 'TBD'}</div>
           <div class="match-score">${score}</div>
@@ -783,6 +1323,82 @@
     cards.forEach(c => io.observe(c));
   }
 
+  // ---------- Search ----------
+  const searchInput = document.getElementById('search-input');
+  const searchResultsEl = document.getElementById('search-results');
+
+  function buildSearchIndex(matches, players) {
+    const teams = [...new Set(matches.flatMap(m => [m.team_a_name, m.team_b_name]).filter(Boolean))];
+    const teamEntries = teams.map(t => ({ type: 'team', label: t, value: t }));
+    const playerEntries = players.map(p => ({
+      type: 'player',
+      label: p.player_name,
+      value: p.player_vw_id,
+      meta: `${p.matches_played} match${p.matches_played === 1 ? '' : 'es'}`,
+    }));
+    return [...teamEntries, ...playerEntries];
+  }
+
+  function selectTeam(team) {
+    activeTeam = team;
+    const select = document.getElementById('team-select');
+    if (select) select.value = team;
+    render();
+    document.getElementById('team-record')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderSearchResults(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      searchResultsEl.hidden = true;
+      searchResultsEl.innerHTML = '';
+      return;
+    }
+    const matches = searchIndex.filter(e => e.label.toLowerCase().includes(q)).slice(0, 20);
+    searchResultsEl.innerHTML = matches.length === 0
+      ? `<div class="search-empty">No players or teams match "${query}".</div>`
+      : matches.map(e => `
+          <div class="search-result-item" data-type="${e.type}" data-value="${e.value}">
+            <span class="sr-type">${e.type}</span>
+            <span class="sr-label">${e.label}</span>
+            ${e.meta ? `<span class="sr-meta">${e.meta}</span>` : ''}
+          </div>`).join('');
+    searchResultsEl.hidden = false;
+  }
+
+  searchInput.addEventListener('input', (e) => renderSearchResults(e.target.value));
+  searchInput.addEventListener('focus', (e) => { if (e.target.value.trim()) renderSearchResults(e.target.value); });
+
+  searchResultsEl.addEventListener('click', (e) => {
+    const item = e.target.closest('.search-result-item');
+    if (!item) return;
+    const { type, value } = item.dataset;
+    searchResultsEl.hidden = true;
+    searchInput.value = '';
+    if (type === 'team') {
+      selectTeam(value);
+    } else if (type === 'player') {
+      openPlayerProfile(Number(value));
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-wrap')) searchResultsEl.hidden = true;
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    searchResultsEl.hidden = true;
+    if (!modalBackdrop.hidden) closeModal();
+  });
+
+  // ---------- Match card clicks (delegated -- cards are re-rendered on every filter change) ----------
+  document.getElementById('main-content').addEventListener('click', (e) => {
+    const card = e.target.closest('.match-card[data-match-no]');
+    if (!card) return;
+    openMatchDetail(Number(card.dataset.matchNo));
+  });
+
   document.getElementById('gender-toggle').addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
@@ -809,9 +1425,11 @@
 
   (async function init() {
     try {
-      allMatches = await fetchAllMatches();
+      [allMatches, allPlayers] = await Promise.all([fetchAllMatches(), fetchAllPlayers()]);
+      matchByNo = new Map(allMatches.map(m => [m.no, m]));
       assignWeeks(allMatches);
       podiumsByTournament = computePodiums(allMatches);
+      searchIndex = buildSearchIndex(allMatches, allPlayers);
       populateSeasonFilter(allMatches);
       populateWeekFilter(allMatches);
       populateTeamFilter(allMatches);

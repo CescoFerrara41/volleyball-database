@@ -101,6 +101,20 @@ CREATE TABLE IF NOT EXISTS team_match_stats (
 );
 
 CREATE INDEX IF NOT EXISTS idx_team_stats_match ON team_match_stats(match_no);
+
+-- Lightweight per-player index for the frontend's search bar -- avoids
+-- pulling all ~260k player_match_stats rows just to build a list of
+-- distinct players. security_invoker so it respects the querying role's
+-- own RLS grants (see sql/enable_public_read.sql) rather than the view
+-- owner's, per Postgres 15+ view/RLS semantics.
+CREATE OR REPLACE VIEW players WITH (security_invoker = true) AS
+SELECT
+    player_vw_id,
+    (array_agg(player_name ORDER BY scraped_at DESC))[1] AS player_name,
+    COUNT(DISTINCT match_no) AS matches_played
+FROM player_match_stats
+WHERE player_vw_id IS NOT NULL
+GROUP BY player_vw_id;
 """
 
 
