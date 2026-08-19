@@ -73,6 +73,7 @@ import psycopg2.extras
 from playwright.async_api import async_playwright
 
 from db import get_connection
+from refresh_search_index import refresh as refresh_search_index
 from stealth import STEALTH_CONTEXT_KWARGS, STEALTH_LAUNCH_ARGS, apply_stealth_init_script
 
 VOLLEYBALLWORLD_BASE = "https://en.volleyballworld.com/volleyball/competitions/volleyball-nations-league"
@@ -691,6 +692,11 @@ async def run(tournament_no: int, season_path: str = "", only_match_numbers: set
         await browser.close()
 
     conn.close()
+
+    if matched:
+        # player_search_index is a materialized snapshot (see db.py), not a
+        # live query -- new/changed data doesn't reach the site otherwise.
+        refresh_search_index()
     print(f"\nDone: {matched} matches scraped, {skipped} skipped.")
 
 

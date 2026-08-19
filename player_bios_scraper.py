@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from playwright.async_api import async_playwright
 
 from db import get_connection
+from refresh_search_index import refresh as refresh_search_index
 from stealth import STEALTH_LAUNCH_ARGS
 from volleystation_scraper import RotatingPage, dismiss_cookie_consent
 
@@ -210,6 +211,11 @@ async def run(limit: int | None, rescrape_all: bool):
         await browser.close()
 
     conn.close()
+
+    if done:
+        # player_search_index is a materialized snapshot (see db.py), not a
+        # live query -- new/changed data doesn't reach the site otherwise.
+        refresh_search_index()
     print(f"\nDone: {done} bios saved, {failed} skipped.")
 
 

@@ -193,32 +193,41 @@ CREATE TABLE IF NOT EXISTS players (
     scraped_at    TIMESTAMPTZ NOT NULL
 );
 
--- Search-index view combining real names with a match count -- kept
+-- Guarded by relkind, same pattern as the players view->table migration
+-- above: player_search_index started as a plain VIEW, and CREATE
+-- MATERIALIZED VIEW IF NOT EXISTS errors ("not a materialized view") if
+-- an ordinary view already has that name, so it has to be dropped first
+-- -- but only the one time this hasn't happened yet.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_class WHERE relname = 'player_search_index' AND relkind = 'v'
+    ) THEN
+        DROP VIEW player_search_index;
+    END IF;
+END $$;
+
+-- Search-index data combining real names with a match count -- kept
 -- separate from the `players` table itself so the frontend can fetch a
 -- small, ready-to-search list without joining/aggregating client-side.
--- security_invoker so it respects the querying role's own RLS grants
--- (see sql/enable_public_read.sql) rather than the view owner's, per
--- Postgres 15+ view/RLS semantics.
 --
--- FULL OUTER JOIN (not a simple join from `players`) is deliberate:
--- player_bios_scraper.py runs as its own multi-hour pass, separate from
--- (and likely lagging behind) volleystation_scraper.py's match-stats
--- scrape -- a player with match stats but no bio row yet still needs to
--- show up in search, just under their bare scraped surname instead of a
--- full name, rather than silently vanishing until every player's been
--- bio-scraped. full_name upgrades to the real one automatically as
--- player_bios_scraper.py fills in `players` over time.
---
--- The subquery filters to set_id='all' *before* aggregating, not just in
--- the matches_played FILTER clause -- confirmed live (EXPLAIN ANALYZE)
--- that leaving it unfiltered forced a sort/GroupAggregate over all
--- ~1.25M rows (6 set-scope variants per category, not just the 1 that
--- matters here) to satisfy array_agg's ORDER BY, ignoring the partial
--- index below entirely and taking >4s -- long enough to blow Supabase's
--- API-side statement timeout on the live site. player_name is identical
--- across all of one match's set-scope variants, so scoping the whole
--- subquery to 'all' loses nothing and lets it use the index.
-CREATE OR REPLACE VIEW player_search_index WITH (security_invoker = true) AS
+-- MATERIALIZED, not a plain view: a live version of this (tried first)
+-- has to aggregate over player_match_stats -- 1.25M rows and growing
+-- every time volleystation_scraper.py runs -- on *every single page
+-- load* of the live site. Even after adding a partial index and
+-- simplifying the aggregate (dropping array_agg's ORDER BY for a plain
+-- MIN(), since any representative name is fine as a fallback), it still
+-- has to touch a quarter-million rows per request -- confirmed live via
+-- Supabase's PostgREST API (not just a direct connection) that this
+-- reliably hit "canceling statement due to statement timeout" for real
+-- site visitors, twice, as the table grew. A materialized view computes
+-- this once and serves a static snapshot instead -- correct architecture
+-- for data that only changes when someone runs a scraper, not on every
+-- read. Must be refreshed after scraping (see refresh_search_index.py);
+-- FULL OUTER JOIN is why a player with match stats but no bio row yet
+-- (player_bios_scraper.py runs as its own separate, likely-lagging pass)
+-- still shows up in search, just under their bare scraped surname.
+CREATE MATERIALIZED VIEW IF NOT EXISTS player_search_index AS
 SELECT
     COALESCE(p.player_vw_id, m.player_vw_id) AS player_vw_id,
     COALESCE(p.full_name, m.player_name) AS full_name,
@@ -228,12 +237,18 @@ FROM players p
 FULL OUTER JOIN (
     SELECT
         player_vw_id,
-        (array_agg(player_name ORDER BY scraped_at DESC))[1] AS player_name,
+        MIN(player_name) AS player_name,
         COUNT(DISTINCT match_no) AS matches_played
     FROM player_match_stats
     WHERE player_vw_id IS NOT NULL AND set_id = 'all'
     GROUP BY player_vw_id
 ) m ON m.player_vw_id = p.player_vw_id;
+
+-- Required for REFRESH MATERIALIZED VIEW CONCURRENTLY, which refreshes
+-- without holding a lock that would block reads from the live site --
+-- a plain REFRESH rebuilds in place and blocks readers for its duration.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_player_search_index_pk
+    ON player_search_index (player_vw_id);
 """
 
 

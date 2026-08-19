@@ -540,6 +540,14 @@
     grid-template-columns: 1fr 1fr;
     gap: 24px;
   }
+  .boxscore-team {
+    /* Grid items default to min-width: auto, which stops them shrinking
+       below their content's intrinsic width -- a wide box-score table
+       (several numeric columns, long player names) was pushing the grid
+       track, and with it the whole modal, past its own border instead of
+       scrolling internally via .table-scroll's overflow-x. */
+    min-width: 0;
+  }
   .boxscore-team .team-label {
     font-weight: 600;
     font-size: 13px;
