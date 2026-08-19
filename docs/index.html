@@ -971,24 +971,47 @@
   // "Attack PointsA Pts" is the title "Attack Points" run together with
   // its short column label "A Pts". Mapped here to compact display labels
   // per category, since which columns exist genuinely varies by category.
-  // 'scoring' is a special case: confirmed live that its All-Sets table
-  // renders a plain "Total ABS"/"Attack Points"/etc. header, NOT the same
-  // concatenated form every other category (and scoring's own per-set
-  // tables) use -- a real site-side inconsistency, not a scrape bug.
+  //
+  // 'scoring' is a special case, and not a clean one: its All-Sets table
+  // renders EITHER a plain "Total ABS"/"Attack Points"/etc. header OR the
+  // same concatenated form every other category uses -- confirmed live
+  // that this varies *per match*, not just a one-time site template
+  // change (e.g. Japan's 2026-06-10 match used the concatenated form,
+  // 2026-08-01 used the plain form). Since it's not predictable, every
+  // scoring field lists both possible keys and pickField() below tries
+  // each in order -- silently using only one form was undercounting
+  // points for every match that happened to use the other one.
   const STAT_CATEGORY_ORDER = ['scoring', 'attack', 'block', 'serve', 'reception', 'dig', 'set'];
   const STAT_CATEGORY_LABELS = {
     scoring: 'Scoring', attack: 'Attack', block: 'Block', serve: 'Serve',
     reception: 'Reception', dig: 'Dig', set: 'Set (Assists)',
   };
   const CATEGORY_FIELDS = {
-    scoring: [['Total ABS', 'Pts'], ['Attack Points', 'Atk'], ['Block Points', 'Blk'], ['Serve Points', 'Srv'], ['Errors', 'Err'], ['Efficiency %', 'Eff%']],
-    attack: [['PointPt', 'Pts'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
-    block: [['PointPt', 'Pts'], ['ErrorsErr', 'Err'], ['TouchesTouches', 'Touch'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
-    serve: [['PointPt', 'Aces'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
-    reception: [['SuccessfulSuccessful', 'Succ'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
-    dig: [['DigsDig', 'Digs'], ['ErrorsErr', 'Err'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
-    set: [['PointPt', 'Assists'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
+    scoring: [
+      [['Total ABS', 'Total ABSABS'], 'Pts'],
+      [['Attack Points', 'Attack PointsA Pts'], 'Atk'],
+      [['Block Points', 'Block PointsB Pts'], 'Blk'],
+      [['Serve Points', 'Serve PointsS Pts'], 'Srv'],
+      [['Errors', 'ErrorsErr'], 'Err'],
+      [['Efficiency %', 'Efficiency %Eff'], 'Eff%'],
+    ],
+    attack: [[['PointPt'], 'Pts'], [['ErrorsErr'], 'Err'], [['AttemptsAtt'], 'Att'], [['TotalTot.'], 'Tot'], [['Efficiency %Eff'], 'Eff%']],
+    block: [[['PointPt'], 'Pts'], [['ErrorsErr'], 'Err'], [['TouchesTouches'], 'Touch'], [['TotalTot.'], 'Tot'], [['Efficiency %Eff'], 'Eff%']],
+    serve: [[['PointPt'], 'Aces'], [['ErrorsErr'], 'Err'], [['AttemptsAtt'], 'Att'], [['TotalTot.'], 'Tot'], [['Efficiency %Eff'], 'Eff%']],
+    reception: [[['SuccessfulSuccessful'], 'Succ'], [['ErrorsErr'], 'Err'], [['AttemptsAtt'], 'Att'], [['TotalTot.'], 'Tot'], [['Efficiency %Eff'], 'Eff%']],
+    dig: [[['DigsDig'], 'Digs'], [['ErrorsErr'], 'Err'], [['TotalTot.'], 'Tot'], [['Efficiency %Eff'], 'Eff%']],
+    set: [[['PointPt'], 'Assists'], [['ErrorsErr'], 'Err'], [['AttemptsAtt'], 'Att'], [['TotalTot.'], 'Tot'], [['Efficiency %Eff'], 'Eff%']],
   };
+
+  // Tries each candidate key in turn, returning the first one actually
+  // present -- see the CATEGORY_FIELDS comment above for why 'scoring'
+  // needs more than one candidate per field.
+  function pickField(rawValues, keys) {
+    for (const k of keys) {
+      if (rawValues[k] !== undefined) return rawValues[k];
+    }
+    return undefined;
+  }
 
   function num(v) {
     if (v === undefined || v === null || v === '') return null;
@@ -1091,13 +1114,13 @@
 
     function teamTable(sideRows, teamName, cat) {
       const fields = CATEGORY_FIELDS[cat];
-      const sortKey = fields[0][0];
-      const sorted = [...sideRows].sort((a, b) => (num(b.raw_values[sortKey]) ?? -Infinity) - (num(a.raw_values[sortKey]) ?? -Infinity));
+      const sortKeys = fields[0][0];
+      const sorted = [...sideRows].sort((a, b) => (num(pickField(b.raw_values, sortKeys)) ?? -Infinity) - (num(pickField(a.raw_values, sortKeys)) ?? -Infinity));
       const bodyHtml = sorted.map(r => `
         <tr class="clickable" data-player-vw-id="${r.player_vw_id}">
           <td class="left">${r.raw_values['Player NamePlayer'] || r.player_name}</td>
           <td class="left" style="color:var(--ink-muted)">${r.raw_values['PositionPos.'] || r.raw_values['Position'] || ''}</td>
-          ${fields.map(([key]) => `<td class="num">${fmtNum(r.raw_values[key])}</td>`).join('')}
+          ${fields.map(([keys]) => `<td class="num">${fmtNum(pickField(r.raw_values, keys))}</td>`).join('')}
         </tr>`).join('');
       const fieldHeaders = fields.map(([, label]) => `<th class="num">${label}</th>`).join('');
       return `
@@ -1178,11 +1201,11 @@
       const agg = bySeason.get(key);
       agg.matches += 1;
       if (s) {
-        agg.pts += num(s.raw_values['Total ABS']) ?? 0;
-        agg.atk += num(s.raw_values['Attack Points']) ?? 0;
-        agg.blk += num(s.raw_values['Block Points']) ?? 0;
-        agg.srv += num(s.raw_values['Serve Points']) ?? 0;
-        agg.err += num(s.raw_values['Errors']) ?? 0;
+        agg.pts += num(pickField(s.raw_values, ['Total ABS', 'Total ABSABS'])) ?? 0;
+        agg.atk += num(pickField(s.raw_values, ['Attack Points', 'Attack PointsA Pts'])) ?? 0;
+        agg.blk += num(pickField(s.raw_values, ['Block Points', 'Block PointsB Pts'])) ?? 0;
+        agg.srv += num(pickField(s.raw_values, ['Serve Points', 'Serve PointsS Pts'])) ?? 0;
+        agg.err += num(pickField(s.raw_values, ['Errors', 'ErrorsErr'])) ?? 0;
       }
     }
     const seasons = [...bySeason.values()].sort((a, b) => b.season.localeCompare(a.season) || a.gender.localeCompare(b.gender));
@@ -1205,7 +1228,7 @@
       const opponent = side === 'A' ? match.team_b_name : match.team_a_name;
       const win = winnerSide(match);
       const result = (win === null || side === null) ? '–' : (win === side.toLowerCase() ? 'W' : 'L');
-      const pts = cats.scoring ? fmtNum(cats.scoring.raw_values['Total ABS']) : '–';
+      const pts = cats.scoring ? fmtNum(pickField(cats.scoring.raw_values, ['Total ABS', 'Total ABSABS'])) : '–';
       return `
         <tr class="clickable" data-match-no="${matchNo}">
           <td class="left">${match.date_local ?? ''}</td>
