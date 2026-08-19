@@ -133,6 +133,19 @@ BEGIN
     END IF;
 END $$;
 
+-- Storing all 6 set-scope variants per category (not just 'all') means a
+-- full re-scrape leaves ~5x as many rows as actually matter for anything
+-- this project queries -- every frontend query and the player_search_index
+-- view below only ever want set_id='all' rows. Confirmed live: at 1.25M
+-- total rows (only 260k of them set_id='all'), the view's GROUP BY over
+-- the full table took long enough to blow Supabase's statement timeout on
+-- the public site. A partial index -- covering only the 'all' subset,
+-- not all six -- fixes exactly the queries that are slow without the
+-- overhead of indexing rows nothing filters for.
+CREATE INDEX IF NOT EXISTS idx_player_stats_all_scope
+    ON player_match_stats (player_vw_id, match_no)
+    WHERE set_id = 'all';
+
 -- Team-level match stats (attack, blocks, serve points, reception % etc.),
 -- from 365scores.com's clean JSON API -- see scores365_scraper.py. Kept
 -- separate from player_match_stats since it's a different grain (one row
@@ -195,6 +208,16 @@ CREATE TABLE IF NOT EXISTS players (
 -- full name, rather than silently vanishing until every player's been
 -- bio-scraped. full_name upgrades to the real one automatically as
 -- player_bios_scraper.py fills in `players` over time.
+--
+-- The subquery filters to set_id='all' *before* aggregating, not just in
+-- the matches_played FILTER clause -- confirmed live (EXPLAIN ANALYZE)
+-- that leaving it unfiltered forced a sort/GroupAggregate over all
+-- ~1.25M rows (6 set-scope variants per category, not just the 1 that
+-- matters here) to satisfy array_agg's ORDER BY, ignoring the partial
+-- index below entirely and taking >4s -- long enough to blow Supabase's
+-- API-side statement timeout on the live site. player_name is identical
+-- across all of one match's set-scope variants, so scoping the whole
+-- subquery to 'all' loses nothing and lets it use the index.
 CREATE OR REPLACE VIEW player_search_index WITH (security_invoker = true) AS
 SELECT
     COALESCE(p.player_vw_id, m.player_vw_id) AS player_vw_id,
@@ -206,9 +229,9 @@ FULL OUTER JOIN (
     SELECT
         player_vw_id,
         (array_agg(player_name ORDER BY scraped_at DESC))[1] AS player_name,
-        COUNT(DISTINCT match_no) FILTER (WHERE set_id = 'all') AS matches_played
+        COUNT(DISTINCT match_no) AS matches_played
     FROM player_match_stats
-    WHERE player_vw_id IS NOT NULL
+    WHERE player_vw_id IS NOT NULL AND set_id = 'all'
     GROUP BY player_vw_id
 ) m ON m.player_vw_id = p.player_vw_id;
 """
