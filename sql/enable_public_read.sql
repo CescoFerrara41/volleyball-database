@@ -9,14 +9,15 @@
 -- reading anything at all; these policies open read-only public access to
 -- exactly the tables/views the frontend needs, and nothing else (in
 -- particular, no INSERT/UPDATE/DELETE policy is granted, so the public
--- key can never write). The `players` view (see db.py) reads through to
--- player_match_stats' own policy below, since it's declared
--- security_invoker.
+-- key can never write). The `player_search_index` view (see db.py) reads
+-- through to players' and player_match_stats' own policies below, since
+-- it's declared security_invoker.
 
 ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE player_match_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_match_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Public read access" ON tournaments;
 CREATE POLICY "Public read access" ON tournaments
@@ -32,4 +33,8 @@ CREATE POLICY "Public read access" ON player_match_stats
 
 DROP POLICY IF EXISTS "Public read access" ON team_match_stats;
 CREATE POLICY "Public read access" ON team_match_stats
+    FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public read access" ON players;
+CREATE POLICY "Public read access" ON players
     FOR SELECT USING (true);

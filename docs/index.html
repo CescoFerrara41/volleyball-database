@@ -705,18 +705,30 @@
       .range(from, to));
   }
 
+  // player_search_index (not the `players` bio table directly) so search
+  // still works for players who haven't been bio-scraped yet -- see
+  // db.py's view comment. full_name falls back to a bare scraped surname
+  // until player_bios_scraper.py fills in the real one.
   function fetchAllPlayers() {
     return fetchPaginated((from, to) => client
-      .from('players')
+      .from('player_search_index')
       .select('*')
       .range(from, to));
   }
 
+  function fetchPlayerBio(playerVwId) {
+    return client.from('players').select('*').eq('player_vw_id', playerVwId).maybeSingle();
+  }
+
+  // set_id='all' is the whole-match total; the scraper also stores one row
+  // per individual set (see db.py's migration note on player_match_stats),
+  // which would double/sextuple-count everything below if not filtered out.
   function fetchPlayerMatchStats(playerVwId) {
     return fetchPaginated((from, to) => client
       .from('player_match_stats')
       .select('*')
       .eq('player_vw_id', playerVwId)
+      .eq('set_id', 'all')
       .range(from, to));
   }
 
@@ -725,6 +737,7 @@
       .from('player_match_stats')
       .select('*')
       .eq('match_no', matchNo)
+      .eq('set_id', 'all')
       .range(from, to));
   }
 
@@ -953,18 +966,22 @@
     animateCount(document.getElementById('stat-seasons'), seasons.size);
   }
 
-  // raw_values keys are the scraped table's own concatenated header text
-  // (see volleystation_scraper.py's header-driven column mapping) -- e.g.
+  // raw_values keys are the scraped table's own header text (see
+  // volleystation_scraper.py's header-driven column mapping) -- e.g.
   // "Attack PointsA Pts" is the title "Attack Points" run together with
   // its short column label "A Pts". Mapped here to compact display labels
   // per category, since which columns exist genuinely varies by category.
+  // 'scoring' is a special case: confirmed live that its All-Sets table
+  // renders a plain "Total ABS"/"Attack Points"/etc. header, NOT the same
+  // concatenated form every other category (and scoring's own per-set
+  // tables) use -- a real site-side inconsistency, not a scrape bug.
   const STAT_CATEGORY_ORDER = ['scoring', 'attack', 'block', 'serve', 'reception', 'dig', 'set'];
   const STAT_CATEGORY_LABELS = {
     scoring: 'Scoring', attack: 'Attack', block: 'Block', serve: 'Serve',
     reception: 'Reception', dig: 'Dig', set: 'Set (Assists)',
   };
   const CATEGORY_FIELDS = {
-    scoring: [['Total ABSABS', 'Pts'], ['Attack PointsA Pts', 'Atk'], ['Block PointsB Pts', 'Blk'], ['Serve PointsS Pts', 'Srv'], ['ErrorsErr', 'Err'], ['Efficiency %Eff', 'Eff%']],
+    scoring: [['Total ABS', 'Pts'], ['Attack Points', 'Atk'], ['Block Points', 'Blk'], ['Serve Points', 'Srv'], ['Errors', 'Err'], ['Efficiency %', 'Eff%']],
     attack: [['PointPt', 'Pts'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
     block: [['PointPt', 'Pts'], ['ErrorsErr', 'Err'], ['TouchesTouches', 'Touch'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
     serve: [['PointPt', 'Aces'], ['ErrorsErr', 'Err'], ['AttemptsAtt', 'Att'], ['TotalTot.', 'Tot'], ['Efficiency %Eff', 'Eff%']],
@@ -1079,7 +1096,7 @@
       const bodyHtml = sorted.map(r => `
         <tr class="clickable" data-player-vw-id="${r.player_vw_id}">
           <td class="left">${r.raw_values['Player NamePlayer'] || r.player_name}</td>
-          <td class="left" style="color:var(--ink-muted)">${r.raw_values['PositionPos.'] || ''}</td>
+          <td class="left" style="color:var(--ink-muted)">${r.raw_values['PositionPos.'] || r.raw_values['Position'] || ''}</td>
           ${fields.map(([key]) => `<td class="num">${fmtNum(r.raw_values[key])}</td>`).join('')}
         </tr>`).join('');
       const fieldHeaders = fields.map(([, label]) => `<th class="num">${label}</th>`).join('');
@@ -1115,33 +1132,41 @@
   async function openPlayerProfile(playerVwId, back) {
     openModal(`<div class="loading-inline">Loading player…</div>`);
     try {
-      const rows = await fetchPlayerMatchStats(playerVwId);
+      // Fetched together: bio (full name, position, nationality) comes from
+      // players via player_bios_scraper.py, a separate pass from the match-
+      // stats scrape, so it may not exist yet for a given player -- profile
+      // rendering falls back to the scraped surname/position when it doesn't.
+      const [rows, bioResult] = await Promise.all([fetchPlayerMatchStats(playerVwId), fetchPlayerBio(playerVwId)]);
+      const bio = bioResult && bioResult.data ? bioResult.data : null;
       if (rows.length === 0) {
-        openModal(`<div class="loading-inline">No stats found for this player.</div>`);
+        const name = bio ? bio.full_name : `Player ${playerVwId}`;
+        openModal(`<div class="player-header"><h2>${name}</h2></div><div class="loading-inline">No match stats found for this player yet.</div>`);
         return;
       }
-      openModal(renderPlayerProfile(rows));
+      openModal(renderPlayerProfile(rows, bio));
       wireModalInteractions(back);
     } catch (err) {
       openModal(`<div class="error-state">Couldn't load player data.<code>${(err && err.message) || err}</code></div>`);
     }
   }
 
-  function renderPlayerProfile(rows) {
+  function renderPlayerProfile(rows, bio) {
     const byMatch = new Map();
     for (const r of rows) {
       if (!byMatch.has(r.match_no)) byMatch.set(r.match_no, {});
       byMatch.get(r.match_no)[r.stat_category] = r;
     }
 
-    const name = rows[0].player_name;
+    const name = bio ? bio.full_name : rows[0].player_name;
     const appearances = [...byMatch.entries()]
       .map(([matchNo, cats]) => ({ matchNo, match: matchByNo.get(matchNo), cats }))
       .filter(x => x.match) // guards against a stat row for a match that isn't loaded (shouldn't happen, but not worth a hard failure if it does)
       .sort((a, b) => (b.match.date_local || '').localeCompare(a.match.date_local || ''));
 
     const anyCat = (cats) => cats.scoring || Object.values(cats)[0];
-    const position = anyCat(appearances[0]?.cats || {})?.raw_values['PositionPos.'] ?? '';
+    const firstCat = anyCat(appearances[0]?.cats || {});
+    const position = bio?.position ?? firstCat?.raw_values['PositionPos.'] ?? firstCat?.raw_values['Position'] ?? '';
+    const nationality = bio?.nationality ?? '';
 
     const bySeason = new Map();
     for (const { match, cats } of appearances) {
@@ -1153,11 +1178,11 @@
       const agg = bySeason.get(key);
       agg.matches += 1;
       if (s) {
-        agg.pts += num(s.raw_values['Total ABSABS']) ?? 0;
-        agg.atk += num(s.raw_values['Attack PointsA Pts']) ?? 0;
-        agg.blk += num(s.raw_values['Block PointsB Pts']) ?? 0;
-        agg.srv += num(s.raw_values['Serve PointsS Pts']) ?? 0;
-        agg.err += num(s.raw_values['ErrorsErr']) ?? 0;
+        agg.pts += num(s.raw_values['Total ABS']) ?? 0;
+        agg.atk += num(s.raw_values['Attack Points']) ?? 0;
+        agg.blk += num(s.raw_values['Block Points']) ?? 0;
+        agg.srv += num(s.raw_values['Serve Points']) ?? 0;
+        agg.err += num(s.raw_values['Errors']) ?? 0;
       }
     }
     const seasons = [...bySeason.values()].sort((a, b) => b.season.localeCompare(a.season) || a.gender.localeCompare(b.gender));
@@ -1180,7 +1205,7 @@
       const opponent = side === 'A' ? match.team_b_name : match.team_a_name;
       const win = winnerSide(match);
       const result = (win === null || side === null) ? '–' : (win === side.toLowerCase() ? 'W' : 'L');
-      const pts = cats.scoring ? fmtNum(cats.scoring.raw_values['Total ABSABS']) : '–';
+      const pts = cats.scoring ? fmtNum(cats.scoring.raw_values['Total ABS']) : '–';
       return `
         <tr class="clickable" data-match-no="${matchNo}">
           <td class="left">${match.date_local ?? ''}</td>
@@ -1196,7 +1221,7 @@
       ${backLink}
       <div class="player-header">
         <h2>${name}</h2>
-        <div class="meta">${position ? position + ' · ' : ''}${appearances.length} match${appearances.length === 1 ? '' : 'es'} tracked</div>
+        <div class="meta">${[position, nationality].filter(Boolean).join(' · ')}${(position || nationality) ? ' · ' : ''}${appearances.length} match${appearances.length === 1 ? '' : 'es'} tracked</div>
       </div>
 
       <div class="profile-section">
@@ -1332,7 +1357,7 @@
     const teamEntries = teams.map(t => ({ type: 'team', label: t, value: t }));
     const playerEntries = players.map(p => ({
       type: 'player',
-      label: p.player_name,
+      label: p.full_name,
       value: p.player_vw_id,
       meta: `${p.matches_played} match${p.matches_played === 1 ? '' : 'es'}`,
     }));

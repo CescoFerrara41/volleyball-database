@@ -11,7 +11,7 @@ Usage:
 
 import argparse
 
-from db import get_connection
+from db import get_connection  # also fixes Windows console encoding for this script -- see db.py
 
 
 def check_no_in_tournament_gaps(cur, tournament_no: int, tournament_label: str) -> list[int]:

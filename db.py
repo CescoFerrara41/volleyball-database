@@ -12,14 +12,30 @@ Design notes (same idempotency strategy as before, now on Postgres):
 - Connection info comes from a single DATABASE_URL environment
   variable rather than being hardcoded, so credentials never end up
   in source control. See .env.example.
+- Every script in this project imports get_connection from here, which
+  makes this the one place to fix Windows' console encoding for all of
+  them at once (see below) rather than repeating it in each entry point.
 """
 
 import os
+import sys
 
 import psycopg2
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Windows' console defaults to the cp1252 codepage, which can't encode a
+# lot of real data this project prints -- team/player names with
+# diacritics (e.g. "Turkiye", "Poreba"), or even a stray symbol in a
+# scraped page's own text. Confirmed live: without this, a script crashes
+# with UnicodeEncodeError the first time one of those reaches print(),
+# which (for a script mid-loop, e.g. the scrapers) silently truncates
+# whatever hadn't been reported yet -- looks like "an error" but is really
+# just this. Every script imports get_connection from here, so fixing it
+# in one place covers all of them.
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -86,6 +102,37 @@ CREATE INDEX IF NOT EXISTS idx_player_stats_match ON player_match_stats(match_no
 -- existing rows default to that source rather than being left ambiguous.
 ALTER TABLE player_match_stats ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'volleyballworld';
 
+-- volleystation_scraper.py scrapes six table variants per stat category --
+-- 'all' (the whole match) plus one per individual set ('1'-'5') -- but the
+-- original UNIQUE constraint above didn't include which one a row came
+-- from. Every set variant collided on the same (match_no, player_name,
+-- team_side, stat_category) key and overwrote the others on conflict, so
+-- whichever set the scraper happened to process last silently clobbered
+-- the real match total (confirmed live: a player's stored 'scoring' row
+-- matched their Set 5 total, not their All-Sets total). Existing rows
+-- can't be retroactively attributed to a real set (that information was
+-- already lost when they were overwritten), so they're marked 'unknown'
+-- rather than mislabeled 'all' -- see README for the required re-scrape.
+ALTER TABLE player_match_stats ADD COLUMN IF NOT EXISTS set_id TEXT NOT NULL DEFAULT 'unknown';
+
+DO $$
+DECLARE
+    old_constraint text;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'player_match_stats_unique_row') THEN
+        SELECT conname INTO old_constraint
+        FROM pg_constraint
+        WHERE conrelid = 'player_match_stats'::regclass AND contype = 'u';
+
+        IF old_constraint IS NOT NULL THEN
+            EXECUTE format('ALTER TABLE player_match_stats DROP CONSTRAINT %I', old_constraint);
+        END IF;
+
+        ALTER TABLE player_match_stats ADD CONSTRAINT player_match_stats_unique_row
+            UNIQUE (match_no, player_name, team_side, stat_category, set_id);
+    END IF;
+END $$;
+
 -- Team-level match stats (attack, blocks, serve points, reception % etc.),
 -- from 365scores.com's clean JSON API -- see scores365_scraper.py. Kept
 -- separate from player_match_stats since it's a different grain (one row
@@ -102,19 +149,68 @@ CREATE TABLE IF NOT EXISTS team_match_stats (
 
 CREATE INDEX IF NOT EXISTS idx_team_stats_match ON team_match_stats(match_no);
 
--- Lightweight per-player index for the frontend's search bar -- avoids
--- pulling all ~260k player_match_stats rows just to build a list of
--- distinct players. security_invoker so it respects the querying role's
--- own RLS grants (see sql/enable_public_read.sql) rather than the view
--- owner's, per Postgres 15+ view/RLS semantics.
-CREATE OR REPLACE VIEW players WITH (security_invoker = true) AS
+-- Real player identity/bio, scraped once per unique player from their own
+-- volleyballworld.com profile page (see player_bios_scraper.py) -- match
+-- box-score tables only ever show a bare last name, not first+last, so
+-- this is a separate scrape keyed on the same player_vw_id used in
+-- player_match_stats. Replaces an earlier version of this project's
+-- `players`, which was just a VIEW deriving a name from player_match_stats
+-- (i.e. that same bare last name) -- a real table with real full names is
+-- strictly better, so the view is dropped in favor of it. Guarded by
+-- relkind so this is a no-op once `players` is already the real table
+-- (DROP VIEW errors if the name now refers to a table, not a view).
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_class WHERE relname = 'players' AND relkind = 'v'
+    ) THEN
+        DROP VIEW players;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS players (
+    player_vw_id  BIGINT PRIMARY KEY,
+    full_name     TEXT NOT NULL,
+    first_name    TEXT,   -- derived from full_name minus last_name; null if that split didn't cleanly apply
+    last_name     TEXT,
+    position      TEXT,
+    nationality   TEXT,
+    birth_date    DATE,
+    height_cm     INTEGER,
+    scraped_at    TIMESTAMPTZ NOT NULL
+);
+
+-- Search-index view combining real names with a match count -- kept
+-- separate from the `players` table itself so the frontend can fetch a
+-- small, ready-to-search list without joining/aggregating client-side.
+-- security_invoker so it respects the querying role's own RLS grants
+-- (see sql/enable_public_read.sql) rather than the view owner's, per
+-- Postgres 15+ view/RLS semantics.
+--
+-- FULL OUTER JOIN (not a simple join from `players`) is deliberate:
+-- player_bios_scraper.py runs as its own multi-hour pass, separate from
+-- (and likely lagging behind) volleystation_scraper.py's match-stats
+-- scrape -- a player with match stats but no bio row yet still needs to
+-- show up in search, just under their bare scraped surname instead of a
+-- full name, rather than silently vanishing until every player's been
+-- bio-scraped. full_name upgrades to the real one automatically as
+-- player_bios_scraper.py fills in `players` over time.
+CREATE OR REPLACE VIEW player_search_index WITH (security_invoker = true) AS
 SELECT
-    player_vw_id,
-    (array_agg(player_name ORDER BY scraped_at DESC))[1] AS player_name,
-    COUNT(DISTINCT match_no) AS matches_played
-FROM player_match_stats
-WHERE player_vw_id IS NOT NULL
-GROUP BY player_vw_id;
+    COALESCE(p.player_vw_id, m.player_vw_id) AS player_vw_id,
+    COALESCE(p.full_name, m.player_name) AS full_name,
+    p.position,
+    COALESCE(m.matches_played, 0) AS matches_played
+FROM players p
+FULL OUTER JOIN (
+    SELECT
+        player_vw_id,
+        (array_agg(player_name ORDER BY scraped_at DESC))[1] AS player_name,
+        COUNT(DISTINCT match_no) FILTER (WHERE set_id = 'all') AS matches_played
+    FROM player_match_stats
+    WHERE player_vw_id IS NOT NULL
+    GROUP BY player_vw_id
+) m ON m.player_vw_id = p.player_vw_id;
 """
 
 

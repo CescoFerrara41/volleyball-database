@@ -557,9 +557,9 @@ def store_player_stats(conn, match_no: int, player_rows: list[dict]):
                 """
                 INSERT INTO player_match_stats (
                     match_no, player_vw_id, player_name, team_side,
-                    stat_category, raw_values, scraped_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (match_no, player_name, team_side, stat_category) DO UPDATE SET
+                    stat_category, set_id, raw_values, scraped_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (match_no, player_name, team_side, stat_category, set_id) DO UPDATE SET
                     raw_values=EXCLUDED.raw_values,
                     scraped_at=EXCLUDED.scraped_at
                 """,
@@ -568,11 +568,12 @@ def store_player_stats(conn, match_no: int, player_rows: list[dict]):
                     r["player_vw_id"],
                     r["player_name"],
                     r["team_side"],
-                    # NOTE: stat_category currently stores just the category
-                    # (e.g. 'attack'); per-set granularity (r["set"]) is
-                    # captured in raw_values' scrape but not yet broken into
-                    # its own column -- see README "Next steps".
                     r["stat_category"],
+                    # Each category is scraped once per set scope ('all', '1'-'5');
+                    # set_id has to be part of the conflict target, or every scope
+                    # collapses onto the same row and whichever is written last
+                    # (previously silently) wins -- see db.py's migration note.
+                    r["set"],
                     psycopg2.extras.Json(r["raw_values"]),
                     now,
                 ),
